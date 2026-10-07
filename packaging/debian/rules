@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	@echo "skip: binary prebuilt by release pipeline"
+
+override_dh_auto_test:
+	@echo "skip: tests already ran in the build job"
+
+override_dh_auto_install:
+	install -d debian/oocat/usr/bin
+	install -m 0755 ../dist/oocat-linux-x86_64 debian/oocat/usr/bin/oocat

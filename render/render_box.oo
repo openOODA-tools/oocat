@@ -1,0 +1,69 @@
+// # Box Renderer - Frame and Border Layout
+//
+// Logline: Generates box borders, file header banners, and grid dividers for terminal view.
+//
+// Setup: Pure layout formatter for boxed terminal presentations. Zero ambient authority.
+//
+// Beats:
+//   1. Build horizontal divider lines with matching gutter intersections.
+//   2. Render header frame with file title, line count, and metadata.
+//   3. Render footer boundary line terminating the grid layout.
+
+import "render/render_theme.oo";
+
+pub fn repeat_char(ch: String, count: Int) -> String {
+    let mut s: String = "";
+    let mut i: Int = 0;
+    while i < count {
+        s = s + ch;
+        i = i + 1;
+    }
+    return s;
+}
+
+pub fn render_top_border(gutter_w: Int, content_w: Int, use_color: Bool) -> String {
+    let left: String = repeat_char("─", gutter_w + 1);
+    let right: String = repeat_char("─", content_w);
+    let line: String = left + "┬" + right;
+    if use_color {
+        let esc: String = ansi_esc();
+        return esc + "[90m" + line + esc + "[0m";
+    }
+    return line;
+}
+
+pub fn render_header(title: String, info: String, gutter_w: Int, content_w: Int, use_color: Bool) -> String {
+    let top: String = render_top_border(gutter_w, content_w, use_color);
+    let mut pad_left: String = "";
+    let mut i: Int = 0;
+    while i <= gutter_w {
+        pad_left = pad_left + " ";
+        i = i + 1;
+    }
+    let label: String = if info != "" { title + " (" + info + ")" } else { title };
+    let esc: String = ansi_esc();
+    let header_line: String = if use_color {
+        esc + "[90m" + pad_left + "│ " + esc + "[1;37m" + label + esc + "[0m"
+    } else {
+        pad_left + "│ " + label
+    };
+    let mid_left: String = repeat_char("─", gutter_w + 1);
+    let mid_right: String = repeat_char("─", content_w);
+    let mid_line: String = if use_color {
+        esc + "[90m" + mid_left + "┼" + mid_right + esc + "[0m"
+    } else {
+        mid_left + "┼" + mid_right
+    };
+    return top + "\n" + header_line + "\n" + mid_line;
+}
+
+pub fn render_bottom_border(gutter_w: Int, content_w: Int, use_color: Bool) -> String {
+    let left: String = repeat_char("─", gutter_w + 1);
+    let right: String = repeat_char("─", content_w);
+    let line: String = left + "┴" + right;
+    if use_color {
+        let esc: String = ansi_esc();
+        return esc + "[90m" + line + esc + "[0m";
+    }
+    return line;
+}

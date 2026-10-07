@@ -1,0 +1,14 @@
+Source: oocat
+Section: utils
+Priority: optional
+Maintainer: openOODA-tools <ops@openooda.org>
+Standards-Version: 4.6.2
+Build-Depends: debhelper-compat (= 13)
+
+Package: oocat
+Architecture: amd64
+Depends: libc6
+Description: Sovereign syntax-highlighting file viewer and pager
+ A bat/cat replacement written in pure openOODA, featuring
+ negative-trust capability security, syntax highlighting via oote themes,
+ line numbering, range windowing, and an MCP stdio surface.

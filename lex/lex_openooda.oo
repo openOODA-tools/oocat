@@ -1,0 +1,94 @@
+// # Lexer openOODA - Language Tokenizer
+//
+// Logline: Tokenizes openOODA source lines into syntax tokens for high-fidelity code display.
+//
+// Setup: Pure string scanning. Identifies language keywords, types, strings, and comments.
+//
+// Beats:
+//   1. Identify line comments and string literals without escaping distortion.
+//   2. Extract alpha-numeric words and match against openOODA reserved vocabulary.
+//   3. Emit tokenized list for color rendering.
+
+import "token_kind.oo";
+
+fn is_oo_keyword(w: String) -> Bool {
+    return w == "pub" || w == "fn" || w == "let" || w == "mut" || w == "if" ||
+           w == "else" || w == "while" || w == "return" || w == "import" ||
+           w == "type" || w == "struct" || w == "match" || w == "true" ||
+           w == "false" || w == "Ok" || w == "Err";
+}
+
+fn is_oo_type(w: String) -> Bool {
+    return w == "Int" || w == "String" || w == "Bool" || w == "List" ||
+           w == "Result" || w == "FileReader" || str_ends_with(w, "Cap");
+}
+
+pub fn lex_line_openooda(line: String) -> List[Token] {
+    let mut out: List[Token] = list_new();
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+
+    while i < n {
+        let c: String = char_at(line, i);
+
+        if c == "/" && i + 1 < n && char_at(line, i + 1) == "/" {
+            let comm: String = str_slice(line, i, n);
+            out = list_push(out, token_comment(comm));
+            return out;
+        }
+
+        if c == "\"" {
+            let mut j: Int = i + 1;
+            while j < n {
+                let sc: String = char_at(line, j);
+                if sc == "\\" && j + 1 < n {
+                    j = j + 2;
+                } else if sc == "\"" {
+                    j = j + 1;
+                    break;
+                } else {
+                    j = j + 1;
+                }
+            }
+            out = list_push(out, token_string(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        if is_alpha_char(c) {
+            let mut j: Int = i;
+            while j < n && is_ident_char(char_at(line, j)) { j = j + 1; }
+            let word: String = str_slice(line, i, j);
+            if is_oo_keyword(word) {
+                out = list_push(out, token_keyword(word));
+            } else if is_oo_type(word) {
+                out = list_push(out, token_type(word));
+            } else if j < n && char_at(line, j) == "(" {
+                out = list_push(out, token_fn(word));
+            } else {
+                out = list_push(out, token_text(word));
+            }
+            i = j;
+            continue;
+        }
+
+        if is_digit_char(c) {
+            let mut j: Int = i;
+            while j < n && is_digit_char(char_at(line, j)) { j = j + 1; }
+            out = list_push(out, token_number(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        if c == "-" && i + 1 < n && char_at(line, i + 1) == ">" {
+            out = list_push(out, token_op("->"));
+            i = i + 2;
+            continue;
+        }
+
+        out = list_push(out, token_text(c));
+        i = i + 1;
+    }
+
+    return out;
+}

@@ -1,0 +1,21 @@
+# Maintainer: openOODA-tools <ops@openooda.org>
+pkgname=oocat-bin
+_pkgname=oocat
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Sovereign syntax-highlighting file viewer and pager with oote palettes and MCP surface"
+arch=('x86_64')
+url="https://github.com/openOODA-tools/oocat"
+license=('Apache-2.0')
+depends=('glibc')
+provides=('oocat')
+conflicts=('oocat')
+source_x86_64=("${url}/releases/download/v${pkgver}/oocat-linux-x86_64"
+               "uninstall.sh::https://raw.githubusercontent.com/openOODA-tools/${_pkgname}/v${pkgver}/uninstall.sh")
+sha256sums_x86_64=('SKIP'
+                   'SKIP')
+
+package() {
+    install -Dm755 "${srcdir}/oocat-linux-x86_64" "${pkgdir}/usr/bin/oocat"
+    install -Dm755 uninstall.sh "${pkgdir}/usr/bin/oocat-uninstall"
+}

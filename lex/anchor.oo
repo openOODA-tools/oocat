@@ -1,0 +1,18 @@
+// # Lexer Subsystem Anchor
+//
+// Logline: Re-exports syntax token models and language-specific source lexers.
+//
+// Setup: Pure shim re-exporting lex domain pages.
+//
+// Beats:
+//   1. Re-export token taxonomy model.
+//   2. Re-export openOODA, Shell, and C lexers.
+//   3. Re-export JSON, Python, and Markdown lexers.
+
+import "token_kind.oo";
+import "lex_openooda.oo";
+import "lex_shell.oo";
+import "lex_c.oo";
+import "lex_json.oo";
+import "lex_python.oo";
+import "lex_markdown.oo";

@@ -1,0 +1,87 @@
+// # Line Window - Range Slicing and Blank Squeezing
+//
+// Logline: Applies line windowing, range constraints, and blank line compaction.
+//
+// Setup: Pure algorithmic transformer on line collections. Zero ambient authority.
+//
+// Beats:
+//   1. Parse --line-range syntax into structured line boundaries.
+//   2. Filter consecutive empty lines when squeeze-blank mode is active.
+//   3. Extract bounded line slice within range constraints.
+
+pub type LineRange = struct {
+    start_line: Int,
+    end_line: Int
+};
+
+pub fn parse_int_safe(s: String, default_val: Int) -> Int {
+    let trimmed: String = str_trim(s);
+    if trimmed == "" { return default_val; }
+    let n: Int = chars_len(trimmed);
+    let mut val: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(trimmed, i);
+        if c == "0" { val = val * 10; }
+        else if c == "1" { val = val * 10 + 1; }
+        else if c == "2" { val = val * 10 + 2; }
+        else if c == "3" { val = val * 10 + 3; }
+        else if c == "4" { val = val * 10 + 4; }
+        else if c == "5" { val = val * 10 + 5; }
+        else if c == "6" { val = val * 10 + 6; }
+        else if c == "7" { val = val * 10 + 7; }
+        else if c == "8" { val = val * 10 + 8; }
+        else if c == "9" { val = val * 10 + 9; }
+        else { return default_val; }
+        i = i + 1;
+    }
+    return val;
+}
+
+pub fn parse_line_range(raw: String, total: Int) -> LineRange {
+    if raw == "" {
+        return LineRange { start_line: 1, end_line: total };
+    }
+    if !str_contains(raw, ":") {
+        let n: Int = parse_int_safe(raw, 1);
+        return LineRange { start_line: n, end_line: n };
+    }
+    let parts: List[String] = str_split(raw, ":");
+    let p_len: Int = list_len(parts);
+    let s_str: String = if p_len > 0 { list_get(parts, 0) } else { "" };
+    let e_str: String = if p_len > 1 { list_get(parts, 1) } else { "" };
+    let start_n: Int = if s_str == "" { 1 } else { parse_int_safe(s_str, 1) };
+    let end_n: Int = if e_str == "" { total } else { parse_int_safe(e_str, total) };
+    return LineRange { start_line: start_n, end_line: end_n };
+}
+
+pub fn squeeze_blank_lines(lines: List[String]) -> List[String] {
+    let mut out: List[String] = list_new();
+    let total: Int = list_len(lines);
+    let mut prev_blank: Bool = false;
+    let mut i: Int = 0;
+    while i < total {
+        let line: String = list_get(lines, i);
+        let is_blank: Bool = str_trim(line) == "";
+        if !is_blank || !prev_blank {
+            out = list_push(out, line);
+        }
+        prev_blank = is_blank;
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn slice_lines(lines: List[String], range: LineRange) -> List[String] {
+    let mut out: List[String] = list_new();
+    let total: Int = list_len(lines);
+    let mut i: Int = 0;
+    while i < total {
+        let line_num: Int = i + 1;
+        if line_num >= range.start_line && line_num <= range.end_line {
+            out = list_push(out, list_get(lines, i));
+        }
+        i = i + 1;
+    }
+    return out;
+}

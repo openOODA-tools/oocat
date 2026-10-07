@@ -1,0 +1,14 @@
+// # IPC Subsystem Anchor
+//
+// Logline: Re-exports CLI option parsing, JSON field extraction, and MCP server loop.
+//
+// Setup: Pure shim re-exporting IPC domain pages.
+//
+// Beats:
+//   1. Re-export command-line option parser and types.
+//   2. Re-export JSON field extraction helpers.
+//   3. Re-export MCP stdio server driver.
+
+import "cat_opts.oo";
+import "json_field.oo";
+import "mcp_serve.oo";

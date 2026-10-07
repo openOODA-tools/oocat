@@ -1,0 +1,15 @@
+// # Render Subsystem Anchor
+//
+// Logline: Re-exports theme hydration, gutter layout, frame borders, and syntax highlighting.
+//
+// Setup: Pure shim re-exporting render domain pages.
+//
+// Beats:
+//   1. Re-export theme configuration resolver.
+//   2. Re-export gutter formatting and flags.
+//   3. Re-export box frames and syntax highlighters.
+
+import "render_theme.oo";
+import "render_gutter.oo";
+import "render_box.oo";
+import "render_highlight.oo";

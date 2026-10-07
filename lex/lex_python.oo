@@ -1,0 +1,85 @@
+// # Lexer Python - Python Script Tokenizer
+//
+// Logline: Tokenizes Python script lines identifying control keywords, strings, and comments.
+//
+// Setup: Pure string scanning. Supports single/double quotes, docstrings, and hash comments.
+//
+// Beats:
+//   1. Identify inline comments and string literals.
+//   2. Extract alpha-numeric words and match against Python keywords.
+//   3. Highlight numbers and structural operators.
+
+import "token_kind.oo";
+
+fn is_py_keyword(w: String) -> Bool {
+    return w == "def" || w == "class" || w == "import" || w == "from" ||
+           w == "return" || w == "if" || w == "elif" || w == "else" ||
+           w == "while" || w == "for" || w == "in" || w == "try" ||
+           w == "except" || w == "finally" || w == "with" || w == "as" ||
+           w == "pass" || w == "break" || w == "continue" || w == "lambda" ||
+           w == "None" || w == "True" || w == "False" || w == "is" ||
+           w == "not" || w == "and" || w == "or";
+}
+
+pub fn lex_line_python(line: String) -> List[Token] {
+    let mut out: List[Token] = list_new();
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+
+    while i < n {
+        let c: String = char_at(line, i);
+
+        if c == "#" {
+            let comm: String = str_slice(line, i, n);
+            out = list_push(out, token_comment(comm));
+            return out;
+        }
+
+        if c == "\"" || c == "'" {
+            let q: String = char_at(line, i);
+            let mut j: Int = i + 1;
+            while j < n {
+                let sc: String = char_at(line, j);
+                if sc == "\\" && j + 1 < n {
+                    j = j + 2;
+                } else if sc == q {
+                    j = j + 1;
+                    break;
+                } else {
+                    j = j + 1;
+                }
+            }
+            out = list_push(out, token_string(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        if is_alpha_char(c) {
+            let mut j: Int = i;
+            while j < n && is_ident_char(char_at(line, j)) { j = j + 1; }
+            let word: String = str_slice(line, i, j);
+            if is_py_keyword(word) {
+                out = list_push(out, token_keyword(word));
+            } else if j < n && char_at(line, j) == "(" {
+                out = list_push(out, token_fn(word));
+            } else {
+                out = list_push(out, token_text(word));
+            }
+            i = j;
+            continue;
+        }
+
+        if is_digit_char(c) {
+            let mut j: Int = i;
+            while j < n && is_digit_char(char_at(line, j)) { j = j + 1; }
+            out = list_push(out, token_number(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        out = list_push(out, token_text(c));
+        i = i + 1;
+    }
+
+    return out;
+}

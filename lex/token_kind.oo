@@ -1,0 +1,68 @@
+// # Token Kind - Syntax Taxonomy and Token Structures
+//
+// Logline: Data structure and classification primitives for lexical syntax tokens.
+//
+// Setup: Pure value representation. Conforms to the canonical oote syntax taxonomy.
+//
+// Beats:
+//   1. Define Token structure holding semantic category and verbatim text payload.
+//   2. Define helper constructors for keywords, strings, comments, numbers, and plain text.
+//   3. Provide token classification and predicate utilities.
+
+pub type Token = struct {
+    kind: String,
+    text: String
+};
+
+pub fn token_new(kind: String, text: String) -> Token {
+    return Token { kind: kind, text: text };
+}
+
+pub fn token_keyword(text: String) -> Token {
+    return Token { kind: "syntax_keyword", text: text };
+}
+
+pub fn token_type(text: String) -> Token {
+    return Token { kind: "syntax_type", text: text };
+}
+
+pub fn token_string(text: String) -> Token {
+    return Token { kind: "syntax_string", text: text };
+}
+
+pub fn token_number(text: String) -> Token {
+    return Token { kind: "syntax_number", text: text };
+}
+
+pub fn token_comment(text: String) -> Token {
+    return Token { kind: "syntax_comment", text: text };
+}
+
+pub fn token_op(text: String) -> Token {
+    return Token { kind: "syntax_op", text: text };
+}
+
+pub fn token_fn(text: String) -> Token {
+    return Token { kind: "syntax_fn", text: text };
+}
+
+pub fn token_var(text: String) -> Token {
+    return Token { kind: "syntax_var", text: text };
+}
+
+pub fn token_text(text: String) -> Token {
+    return Token { kind: "text", text: text };
+}
+
+pub fn is_alpha_char(c: String) -> Bool {
+    return chars_len(c) == 1 && str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", c);
+}
+
+pub fn is_digit_char(c: String) -> Bool {
+    return c == "0" || c == "1" || c == "2" || c == "3" || c == "4" ||
+           c == "5" || c == "6" || c == "7" || c == "8" || c == "9";
+}
+
+pub fn is_ident_char(c: String) -> Bool {
+    return is_alpha_char(c) || is_digit_char(c);
+}

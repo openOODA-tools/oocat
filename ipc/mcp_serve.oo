@@ -1,0 +1,137 @@
+// # MCP Stdio Server - Agent File Inspection Surface
+//
+// Logline: Speaks Model Context Protocol over stdio providing syntax viewing tools for agents.
+//
+// Setup: Requires FsReadCap and EnvCap. Dispatches oocat_view and oocat_highlight tools.
+//
+// Beats:
+//   1. Handle initialize and notifications/initialized lifecycle handshakes.
+//   2. Advertise oocat_view and oocat_highlight tools with input schemas.
+//   3. Dispatch tool execution requests and return structured text payloads.
+
+import "view/file_reader.oo";
+import "view/line_window.oo";
+import "render/render_theme.oo";
+import "render/render_highlight.oo";
+import "render/render_gutter.oo";
+import "json_field.oo";
+
+fn build_error(id: String, code: Int, msg: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":" + to_string(code) + ",\"message\":\"" + json_escape(msg) + "\"}}";
+}
+
+fn build_tool_result(id: String, text: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(text) + "\"}]}}";
+}
+
+fn handle_tool_call(fs: &FsReadCap, env: &EnvCap, id: String, req: String) -> String {
+    let params: String = json_field_raw(req, "params");
+    let tool_name: String = json_field_string(params, "name");
+    let args_raw: String = json_field_raw(params, "arguments");
+    let theme: String = resolve_cat_theme(fs, env);
+
+    if tool_name == "oocat_view" {
+        let path: String = json_field_string(args_raw, "path");
+        if path == "" { return build_error(id, -32602, "missing required argument: path"); }
+        let res: Result[String, String] = read_input_source(fs, path);
+        if res.is_err() {
+            let err_msg: String = match res { Ok(_) => "", Err(e) => e };
+            return build_error(id, -32000, "failed to read file: " + err_msg);
+        }
+        let content: String = match res { Ok(s) => s, Err(_) => "" };
+        let all_lines: List[String] = split_lines(content);
+        let total_count: Int = list_len(all_lines);
+        let range_raw: String = json_field_string(args_raw, "line_range");
+        let range: LineRange = parse_line_range(range_raw, total_count);
+        let lang: String = detect_language(path);
+        let gw: Int = calc_gutter_width(range.end_line);
+
+        let mut out: String = "";
+        let mut i: Int = 0;
+        while i < total_count {
+            let line_num: Int = i + 1;
+            if line_num >= range.start_line && line_num <= range.end_line {
+                let raw_line: String = list_get(all_lines, i);
+                let gutter: String = format_gutter(line_num, gw, true, false);
+                let colored: String = highlight_line(raw_line, lang, theme, false);
+                out = out + gutter + colored + "\n";
+            }
+            i = i + 1;
+        }
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "oocat_highlight" {
+        let code: String = json_field_string(args_raw, "code");
+        let lang_opt: String = json_field_string(args_raw, "language");
+        let lang: String = if lang_opt != "" { lang_opt } else { "openooda" };
+        let lines: List[String] = split_lines(code);
+        let count: Int = list_len(lines);
+        let mut out: String = "";
+        let mut i: Int = 0;
+        while i < count {
+            let raw_line: String = list_get(lines, i);
+            let hl: String = highlight_line(raw_line, lang, theme, true);
+            out = out + hl + "\n";
+            i = i + 1;
+        }
+        return build_tool_result(id, out);
+    }
+
+    return build_error(id, -32601, "unknown tool: " + tool_name);
+}
+
+fn handle_mcp_request(fs: &FsReadCap, env: &EnvCap, req: String) -> String {
+    let method: String = json_field_string(req, "method");
+    let raw_id: String = json_field_raw(req, "id");
+    let id: String = if chars_len(raw_id) == 0 { "null" } else { raw_id };
+
+    if method == "initialize" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"oocat\",\"version\":\"0.1.0\"}}}";
+    }
+    if method == "notifications/initialized" {
+        return "";
+    }
+    if method == "tools/list" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":[{\"name\":\"oocat_view\",\"description\":\"Inspect file content with syntax highlighting and line numbers\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"line_range\":{\"type\":\"string\"}},\"required\":[\"path\"]}},{\"name\":\"oocat_highlight\",\"description\":\"Highlight code snippet using oote theme\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"code\":{\"type\":\"string\"},\"language\":{\"type\":\"string\"}},\"required\":[\"code\"]}}]}}";
+    }
+    if method == "tools/call" {
+        return handle_tool_call(fs, env, id, req);
+    }
+    if method == "shutdown" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":null}";
+    }
+    return build_error(id, -32601, "method not found: " + method);
+}
+
+pub fn run_mcp_server(fs: &FsReadCap, env: &EnvCap) -> Int {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fs, 100);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+                let mut nl_pos: Int = str_index_of(buf, "\n");
+                while nl_pos >= 0 {
+                    let line: String = str_slice(buf, 0, nl_pos);
+                    buf = str_slice(buf, nl_pos + 1, chars_len(buf));
+                    let trimmed: String = str_trim(line);
+                    if chars_len(trimmed) > 0 {
+                        let reply: String = handle_mcp_request(fs, env, trimmed);
+                        if chars_len(reply) > 0 {
+                            println(reply);
+                        }
+                    }
+                    nl_pos = str_index_of(buf, "\n");
+                }
+            }
+        }
+    }
+    return 0;
+}

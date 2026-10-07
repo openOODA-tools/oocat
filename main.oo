@@ -1,0 +1,159 @@
+// # oocat Entry Point
+//
+// Logline: Sovereign capability-bounded syntax-highlighting file viewer and pager.
+//
+// Setup: Bound to &FsReadCap and &EnvCap. Zero ambient authority.
+//
+// Beats:
+//   1. Parse command-line flags and options for styles, ranges, and formatting.
+//   2. Hydrate syntax palette from oote theme system and terminal environment.
+//   3. Render styled, guttered, and syntax-highlighted source lines to standard output.
+
+import "lex/anchor.oo";
+import "render/anchor.oo";
+import "view/anchor.oo";
+import "ipc/anchor.oo";
+import "std/fs/process/env.oo";
+
+fn print_help() {
+    println("oocat 0.1.0 (openOODA sovereign cat)");
+    println("Usage: oocat [OPTIONS] [FILE]...");
+    println("");
+    println("Concatenate FILE(s) to standard output with syntax highlighting and line numbers.");
+    println("With no FILE, or when FILE is -, read standard input.");
+    println("");
+    println("Options:");
+    println("  -n, --number             number all output lines");
+    println("  -b, --number-nonblank    number nonempty output lines, overrides -n");
+    println("  -s, --squeeze-blank      suppress repeated empty output lines");
+    println("  -A, --show-all           display $ at end of each line, show tabs as ^I");
+    println("  -r, --line-range <R>     only output lines within range (e.g. 10:30, :20, 50:)");
+    println("      --style <STYLE>      display style: plain, numbers, grid, full [default: full]");
+    println("      --color <WHEN>       colorize output: auto, always, never [default: auto]");
+    println("      --no-color           disable syntax highlighting");
+    println("      --mcp                run as Model Context Protocol stdio server");
+    println("  -h, --help               display this help and exit");
+    println("  -v, --version            output version information and exit");
+}
+
+fn print_version() {
+    println("oocat 0.1.0");
+    println("Copyright (C) 2026 openOODA Project.");
+    println("License: Apache 2.0. Sovereign capability-bounded file viewer.");
+}
+
+fn resolve_color_choice(opts_color: String, env: &EnvCap) -> Bool {
+    if opts_color == "never" { return false; }
+    if opts_color == "always" { return true; }
+    let no_col: Result[String, String] = env_get(env, "NO_COLOR");
+    if no_col.is_ok() {
+        let v: String = match no_col { Ok(s) => s, Err(_) => "" };
+        if chars_len(v) > 0 { return false; }
+    }
+    return true;
+}
+
+fn render_file(path: String, opts: CatOpts, fs: &FsReadCap, theme: String, use_color: Bool) -> Int {
+    let res: Result[String, String] = read_input_source(fs, path);
+    if res.is_err() {
+        let err_msg: String = match res { Ok(_) => "", Err(e) => e };
+        println("oocat: " + path + ": " + err_msg);
+        return 1;
+    }
+    let content: String = match res { Ok(s) => s, Err(_) => "" };
+    if is_binary_content(content) {
+        println("oocat: " + path + ": binary file suppressed");
+        return 0;
+    }
+
+    let mut raw_lines: List[String] = split_lines(content);
+    if opts.squeeze_blank {
+        raw_lines = squeeze_blank_lines(raw_lines);
+    }
+
+    let total: Int = list_len(raw_lines);
+    let range: LineRange = parse_line_range(opts.line_range, total);
+    let lang: String = detect_language(path);
+    let gw: Int = calc_gutter_width(range.end_line);
+    let display_title: String = if path == "-" { "stdin" } else { path };
+
+    let show_borders: Bool = opts.style == "full" || opts.style == "grid";
+    let show_header: Bool = opts.style == "full" && path != "-";
+    let show_nums: Bool = opts.number || opts.number_nonblank || opts.style == "numbers" || opts.style == "grid" || opts.style == "full";
+
+    if show_header {
+        let hdr: String = render_header(display_title, to_string(total) + " lines", gw, 70, use_color);
+        println(hdr);
+    } else if show_borders {
+        println(render_top_border(gw, 70, use_color));
+    }
+
+    let mut nb_counter: Int = 1;
+    let mut i: Int = 0;
+    while i < total {
+        let line_num: Int = i + 1;
+        if line_num >= range.start_line && line_num <= range.end_line {
+            let mut line_text: String = list_get(raw_lines, i);
+            if opts.show_all {
+                line_text = apply_show_all(line_text);
+            }
+            let is_blank: Bool = str_trim(line_text) == "";
+            let gutter: String = if show_nums {
+                if opts.number_nonblank {
+                    if is_blank {
+                        format_empty_gutter(gw, show_borders || opts.style == "numbers", use_color)
+                    } else {
+                        let g: String = format_gutter(nb_counter, gw, show_borders || opts.style == "numbers", use_color);
+                        nb_counter = nb_counter + 1;
+                        g
+                    }
+                } else {
+                    format_gutter(line_num, gw, show_borders || opts.style == "numbers", use_color)
+                }
+            } else {
+                ""
+            };
+            let hl: String = highlight_line(line_text, lang, theme, use_color);
+            println(gutter + hl);
+        }
+        i = i + 1;
+    }
+
+    if show_borders {
+        println(render_bottom_border(gw, 70, use_color));
+    }
+    return 0;
+}
+
+pub fn main(args: List[String], fs: &FsReadCap, env: &EnvCap) -> Int {
+    let opts: CatOpts = parse_cat_opts(args);
+    if opts.show_help {
+        print_help();
+        return 0;
+    }
+    if opts.show_version {
+        print_version();
+        return 0;
+    }
+    if opts.mcp_mode {
+        return run_mcp_server(fs, env);
+    }
+
+    let theme: String = resolve_cat_theme(fs, env);
+    let use_color: Bool = resolve_color_choice(opts.color, env);
+
+    let file_count: Int = list_len(opts.files);
+    if file_count == 0 {
+        return render_file("-", opts, fs, theme, use_color);
+    }
+
+    let mut status: Int = 0;
+    let mut i: Int = 0;
+    while i < file_count {
+        let path: String = list_get(opts.files, i);
+        let code: Int = render_file(path, opts, fs, theme, use_color);
+        if code != 0 { status = code; }
+        i = i + 1;
+    }
+    return status;
+}

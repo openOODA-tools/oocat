@@ -1,0 +1,64 @@
+// # Syntax Highlighter - Token Styler
+//
+// Logline: Transforms source lines into styled ANSI sequences using lexical tokens and oote theme.
+//
+// Setup: Pure colorizer. Maps tokens into terminal escape sequences. Zero ambient authority.
+//
+// Beats:
+//   1. Detect language from file path or explicit hint.
+//   2. Dispatch line to appropriate language lexer.
+//   3. Render token stream into ANSI colored string with theme palette.
+
+import "render/render_theme.oo";
+import "lex/token_kind.oo";
+import "lex/lex_openooda.oo";
+import "lex/lex_shell.oo";
+import "lex/lex_c.oo";
+import "lex/lex_json.oo";
+import "lex/lex_python.oo";
+import "lex/lex_markdown.oo";
+
+pub fn detect_language(path: String) -> String {
+    if str_ends_with(path, ".oo") || str_ends_with(path, ".oot") { return "openooda"; }
+    if str_ends_with(path, ".sh") || str_ends_with(path, ".bash") || str_ends_with(path, ".zsh") { return "shell"; }
+    if str_ends_with(path, "PKGBUILD") || str_ends_with(path, "Makefile") { return "shell"; }
+    if str_ends_with(path, ".c") || str_ends_with(path, ".h") || str_ends_with(path, ".cpp") || str_ends_with(path, ".hpp") { return "c"; }
+    if str_ends_with(path, ".json") || str_ends_with(path, ".jsonl") { return "json"; }
+    if str_ends_with(path, ".py") { return "python"; }
+    if str_ends_with(path, ".md") || str_ends_with(path, ".markdown") { return "markdown"; }
+    return "plain";
+}
+
+pub fn lex_line_dispatch(line: String, lang: String) -> List[Token] {
+    if lang == "openooda" { return lex_line_openooda(line); }
+    if lang == "shell" { return lex_line_shell(line); }
+    if lang == "c" { return lex_line_c(line); }
+    if lang == "json" { return lex_line_json(line); }
+    if lang == "python" { return lex_line_python(line); }
+    if lang == "markdown" { return lex_line_markdown(line); }
+    let mut plain: List[Token] = list_new();
+    plain = list_push(plain, token_text(line));
+    return plain;
+}
+
+pub fn highlight_line(line: String, lang: String, theme: String, use_color: Bool) -> String {
+    if !use_color || lang == "plain" {
+        return line;
+    }
+    let tokens: List[Token] = lex_line_dispatch(line, lang);
+    let count: Int = list_len(tokens);
+    let esc: String = ansi_esc();
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < count {
+        let tok: Token = list_get(tokens, i);
+        let code: String = token_ansi_code(tok.kind, theme);
+        if code != "" {
+            out = out + esc + "[" + code + "m" + tok.text + esc + "[0m";
+        } else {
+            out = out + tok.text;
+        }
+        i = i + 1;
+    }
+    return out;
+}

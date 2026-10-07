@@ -1,0 +1,74 @@
+// # File Reader - Content Ingestion and Binary Detection
+//
+// Logline: Ingests file and stdin byte streams safely while detecting binary payloads.
+//
+// Setup: Bound to &FsReadCap capability. Zero ambient authority.
+//
+// Beats:
+//   1. Ingest file content from filesystem path or stdin indicator ("-").
+//   2. Detect binary payloads using null byte and control character heuristics.
+//   3. Split text content into individual line strings.
+
+pub fn drain_stdin_content(fs: &FsReadCap) -> String {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fs, 100);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+            }
+        }
+    }
+    return buf;
+}
+
+pub fn read_input_source(fs: &FsReadCap, path: String) -> Result[String, String] {
+    if path == "-" || path == "" {
+        let content: String = drain_stdin_content(fs);
+        return Ok(content);
+    }
+    return read_file(fs, path);
+}
+
+pub fn is_binary_content(s: String) -> Bool {
+    let n: Int = chars_len(s);
+    let check_limit: Int = if n < 1024 { n } else { 1024 };
+    let mut i: Int = 0;
+    while i < check_limit {
+        let c: String = char_at(s, i);
+        if c == "\0" {
+            return true;
+        }
+        i = i + 1;
+    }
+    return false;
+}
+
+pub fn split_lines(content: String) -> List[String] {
+    let mut lines: List[String] = list_new();
+    let n: Int = chars_len(content);
+    let mut cur: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(content, i);
+        if c == "\n" {
+            lines = list_push(lines, cur);
+            cur = "";
+        } else if c != "\r" {
+            cur = cur + c;
+        }
+        i = i + 1;
+    }
+    if cur != "" || n == 0 || (n > 0 && char_at(content, n - 1) == "\n") {
+        if cur != "" {
+            lines = list_push(lines, cur);
+        }
+    }
+    return lines;
+}

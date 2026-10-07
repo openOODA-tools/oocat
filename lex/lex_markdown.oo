@@ -1,0 +1,63 @@
+// # Lexer Markdown - Document Structure Tokenizer
+//
+// Logline: Parses Markdown document lines highlighting headers, blockquotes, fences, and lists.
+//
+// Setup: Pure string scanning. Detects CommonMark and GitHub Flavored Markdown structures.
+//
+// Beats:
+//   1. Identify header hashes and code fence markers.
+//   2. Identify blockquotes, bullet points, and numbered lists.
+//   3. Highlight inline code spans and formatting delimiters.
+
+import "token_kind.oo";
+
+pub fn lex_line_markdown(line: String) -> List[Token] {
+    let mut out: List[Token] = list_new();
+    let trimmed: String = str_trim(line);
+
+    if str_starts_with(trimmed, "```") {
+        out = list_push(out, token_type(line));
+        return out;
+    }
+
+    if str_starts_with(trimmed, "#") {
+        out = list_push(out, token_keyword(line));
+        return out;
+    }
+
+    if str_starts_with(trimmed, ">") {
+        out = list_push(out, token_comment(line));
+        return out;
+    }
+
+    if str_starts_with(trimmed, "- ") || str_starts_with(trimmed, "* ") || str_starts_with(trimmed, "+ ") {
+        let n: Int = chars_len(line);
+        let mut i: Int = 0;
+        while i < n && (char_at(line, i) == " " || char_at(line, i) == "\t") { i = i + 1; }
+        let bullet: String = str_slice(line, i, i + 2);
+        let rest: String = str_slice(line, i + 2, n);
+        let indent: String = str_slice(line, 0, i);
+        if chars_len(indent) > 0 { out = list_push(out, token_text(indent)); }
+        out = list_push(out, token_op(bullet));
+        out = list_push(out, token_text(rest));
+        return out;
+    }
+
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(line, i);
+        if c == "`" {
+            let mut j: Int = i + 1;
+            while j < n && char_at(line, j) != "`" { j = j + 1; }
+            if j < n && char_at(line, j) == "`" { j = j + 1; }
+            out = list_push(out, token_var(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+        out = list_push(out, token_text(c));
+        i = i + 1;
+    }
+
+    return out;
+}

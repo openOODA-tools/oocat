@@ -1,0 +1,94 @@
+// # Lexer Shell - Bash and POSIX Script Tokenizer
+//
+// Logline: Scans shell script lines to extract keywords, variables, comments, and strings.
+//
+// Setup: Pure string scanning. Distinguishes quotes, expansions, and comments deterministically.
+//
+// Beats:
+//   1. Detect inline comments beginning with pound symbol.
+//   2. Extract double and single quoted strings and variable expansions.
+//   3. Recognize shell control keywords and command statements.
+
+import "token_kind.oo";
+
+fn is_sh_keyword(w: String) -> Bool {
+    return w == "if" || w == "then" || w == "else" || w == "elif" ||
+           w == "fi" || w == "for" || w == "while" || w == "do" ||
+           w == "done" || w == "case" || w == "esac" || w == "function" ||
+           w == "in" || w == "export" || w == "set" || w == "shift" ||
+           w == "exit" || w == "return" || w == "echo";
+}
+
+pub fn lex_line_shell(line: String) -> List[Token] {
+    let mut out: List[Token] = list_new();
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+
+    while i < n {
+        let c: String = char_at(line, i);
+
+        if c == "#" {
+            let comm: String = str_slice(line, i, n);
+            out = list_push(out, token_comment(comm));
+            return out;
+        }
+
+        if c == "\"" || c == "'" {
+            let q: String = char_at(line, i);
+            let mut j: Int = i + 1;
+            while j < n {
+                let sc: String = char_at(line, j);
+                if sc == "\\" && q == "\"" && j + 1 < n {
+                    j = j + 2;
+                } else if sc == q {
+                    j = j + 1;
+                    break;
+                } else {
+                    j = j + 1;
+                }
+            }
+            out = list_push(out, token_string(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        if c == "$" {
+            let mut j: Int = i + 1;
+            if j < n && char_at(line, j) == "{" {
+                while j < n && char_at(line, j) != "}" { j = j + 1; }
+                if j < n && char_at(line, j) == "}" { j = j + 1; }
+            } else {
+                while j < n && is_ident_char(char_at(line, j)) { j = j + 1; }
+            }
+            out = list_push(out, token_var(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        if is_alpha_char(c) {
+            let mut j: Int = i;
+            while j < n && (is_ident_char(char_at(line, j)) || char_at(line, j) == "-") { j = j + 1; }
+            let word: String = str_slice(line, i, j);
+            if is_sh_keyword(word) {
+                out = list_push(out, token_keyword(word));
+            } else {
+                out = list_push(out, token_text(word));
+            }
+            i = j;
+            continue;
+        }
+
+        if is_digit_char(c) {
+            let mut j: Int = i;
+            while j < n && is_digit_char(char_at(line, j)) { j = j + 1; }
+            out = list_push(out, token_number(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        out = list_push(out, token_text(c));
+        i = i + 1;
+    }
+
+    return out;
+}

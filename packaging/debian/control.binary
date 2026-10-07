@@ -1,0 +1,10 @@
+Package: oocat
+Version: 0.1.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Sovereign syntax-highlighting file viewer and pager
+ A bat/cat replacement written in pure openOODA, featuring
+ negative-trust capability security, syntax highlighting via oote themes,
+ line numbering, range windowing, and an MCP stdio surface.

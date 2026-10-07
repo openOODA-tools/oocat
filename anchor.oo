@@ -1,0 +1,15 @@
+// # oocat Root Anchor
+//
+// Logline: Top-level anchor re-exporting lex, render, view, and ipc subsystems.
+//
+// Setup: Pure shim re-exporting all oocat domain anchors.
+//
+// Beats:
+//   1. Re-export lexical analysis subsystem.
+//   2. Re-export render and formatting subsystem.
+//   3. Re-export view, file ingestion, and IPC subsystems.
+
+import "lex/anchor.oo";
+import "render/anchor.oo";
+import "view/anchor.oo";
+import "ipc/anchor.oo";

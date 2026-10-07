@@ -1,0 +1,82 @@
+// # Gutter Renderer - Line Numbering and Flags
+//
+// Logline: Formats line numbers, gutter dividers, and line-ending symbols for styled output.
+//
+// Setup: Pure string formatter. Adheres to zero ambient authority.
+//
+// Beats:
+//   1. Calculate dynamic gutter width based on maximum line count.
+//   2. Format padded line numbers and vertical gutter dividers.
+//   3. Handle line-ending indicators (-A / --show-all trailing $).
+
+import "render/render_theme.oo";
+
+pub fn calc_gutter_width(max_line: Int) -> Int {
+    if max_line < 10 { return 3; }
+    if max_line < 100 { return 4; }
+    if max_line < 1000 { return 5; }
+    if max_line < 10000 { return 6; }
+    if max_line < 100000 { return 7; }
+    return 8;
+}
+
+pub fn pad_left_int(val: Int, width: Int) -> String {
+    let s: String = to_string(val);
+    let mut len: Int = chars_len(s);
+    let mut res: String = "";
+    while len < width {
+        res = res + " ";
+        len = len + 1;
+    }
+    return res + s;
+}
+
+pub fn pad_spaces(width: Int) -> String {
+    let mut res: String = "";
+    let mut i: Int = 0;
+    while i < width {
+        res = res + " ";
+        i = i + 1;
+    }
+    return res;
+}
+
+pub fn format_gutter(num: Int, width: Int, show_divider: Bool, use_color: Bool) -> String {
+    let padded: String = pad_left_int(num, width);
+    if !show_divider {
+        return padded + " ";
+    }
+    if use_color {
+        let esc: String = ansi_esc();
+        return esc + "[90m" + padded + " │ " + esc + "[0m";
+    }
+    return padded + " │ ";
+}
+
+pub fn format_empty_gutter(width: Int, show_divider: Bool, use_color: Bool) -> String {
+    let spaces: String = pad_spaces(width);
+    if !show_divider {
+        return spaces + " ";
+    }
+    if use_color {
+        let esc: String = ansi_esc();
+        return esc + "[90m" + spaces + " │ " + esc + "[0m";
+    }
+    return spaces + " │ ";
+}
+
+pub fn apply_show_all(line: String) -> String {
+    let n: Int = chars_len(line);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(line, i);
+        if c == "\t" {
+            out = out + "^I";
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out + "$";
+}

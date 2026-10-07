@@ -1,0 +1,13 @@
+// # View Subsystem Anchor
+//
+// Logline: Re-exports file ingestion, binary detection, and line windowing logic.
+//
+// Setup: Pure shim re-exporting view domain pages.
+//
+// Beats:
+//   1. Re-export file reader and stdin draining.
+//   2. Re-export line range parsing, slicing, and blank squeezing.
+//   3. Maintain capability boundary discipline.
+
+import "file_reader.oo";
+import "line_window.oo";

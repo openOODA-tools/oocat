@@ -1,0 +1,88 @@
+// # Option Parser - CLI Argument Processor
+//
+// Logline: Decodes command line arguments and switches into typed configuration records.
+//
+// Setup: Pure string analyzer. Maps flags to typed CatOpts representation.
+//
+// Beats:
+//   1. Define CatOpts record structure capturing formatting and operational switches.
+//   2. Parse POSIX flags and GNU long options without ambient state.
+//   3. Separate positional file operands from flags and switches.
+
+pub type CatOpts = struct {
+    number: Bool,
+    number_nonblank: Bool,
+    squeeze_blank: Bool,
+    show_all: Bool,
+    style: String,
+    color: String,
+    line_range: String,
+    mcp_mode: Bool,
+    show_help: Bool,
+    show_version: Bool,
+    files: List[String]
+};
+
+pub fn default_cat_opts() -> CatOpts {
+    return CatOpts {
+        number: false,
+        number_nonblank: false,
+        squeeze_blank: false,
+        show_all: false,
+        style: "full",
+        color: "auto",
+        line_range: "",
+        mcp_mode: false,
+        show_help: false,
+        show_version: false,
+        files: list_new()
+    };
+}
+
+pub fn parse_cat_opts(args: List[String]) -> CatOpts {
+    let mut opts: CatOpts = default_cat_opts();
+    let total: Int = list_len(args);
+    let mut i: Int = 0;
+
+    while i < total {
+        let arg: String = list_get(args, i);
+
+        if arg == "-h" || arg == "--help" {
+            opts.show_help = true;
+        } else if arg == "-v" || arg == "--version" {
+            opts.show_version = true;
+        } else if arg == "--mcp" {
+            opts.mcp_mode = true;
+        } else if arg == "-n" || arg == "--number" {
+            opts.number = true;
+        } else if arg == "-b" || arg == "--number-nonblank" {
+            opts.number_nonblank = true;
+        } else if arg == "-s" || arg == "--squeeze-blank" {
+            opts.squeeze_blank = true;
+        } else if arg == "-A" || arg == "--show-all" {
+            opts.show_all = true;
+        } else if arg == "--no-color" {
+            opts.color = "never";
+        } else if arg == "--color" && i + 1 < total {
+            i = i + 1;
+            opts.color = list_get(args, i);
+        } else if str_starts_with(arg, "--color=") {
+            opts.color = str_slice(arg, 8, chars_len(arg));
+        } else if arg == "--style" && i + 1 < total {
+            i = i + 1;
+            opts.style = list_get(args, i);
+        } else if str_starts_with(arg, "--style=") {
+            opts.style = str_slice(arg, 8, chars_len(arg));
+        } else if (arg == "-r" || arg == "--line-range") && i + 1 < total {
+            i = i + 1;
+            opts.line_range = list_get(args, i);
+        } else if str_starts_with(arg, "--line-range=") {
+            opts.line_range = str_slice(arg, 13, chars_len(arg));
+        } else if !str_starts_with(arg, "-") || arg == "-" {
+            opts.files = list_push(opts.files, arg);
+        }
+        i = i + 1;
+    }
+
+    return opts;
+}

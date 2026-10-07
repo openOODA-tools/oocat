@@ -1,0 +1,88 @@
+// # Lexer JSON - Object Serialization Tokenizer
+//
+// Logline: Parses JSON payloads highlighting property keys, string values, numbers, and literals.
+//
+// Setup: Pure string scanning. Distinguishes object keys from string values via colon delimiter.
+//
+// Beats:
+//   1. Identify double-quoted string literals and scan lookahead for colon binding.
+//   2. Parse numeric sequences, booleans, and null primitives.
+//   3. Highlight braces, brackets, and structural punctuation.
+
+import "token_kind.oo";
+
+fn is_json_num(c: String) -> Bool {
+    return chars_len(c) == 1 && str_contains("0123456789.-+", c);
+}
+
+pub fn lex_line_json(line: String) -> List[Token] {
+    let mut out: List[Token] = list_new();
+    let n: Int = chars_len(line);
+    let mut i: Int = 0;
+
+    while i < n {
+        let c: String = char_at(line, i);
+
+        if c == "\"" {
+            let mut j: Int = i + 1;
+            while j < n {
+                let sc: String = char_at(line, j);
+                if sc == "\\" && j + 1 < n {
+                    j = j + 2;
+                } else if sc == "\"" {
+                    j = j + 1;
+                    break;
+                } else {
+                    j = j + 1;
+                }
+            }
+            let s_text: String = str_slice(line, i, j);
+            let mut is_key: Bool = false;
+            let mut k: Int = j;
+            while k < n && (char_at(line, k) == " " || char_at(line, k) == "\t") { k = k + 1; }
+            if k < n && char_at(line, k) == ":" { is_key = true; }
+
+            if is_key {
+                out = list_push(out, token_var(s_text));
+            } else {
+                out = list_push(out, token_string(s_text));
+            }
+            i = j;
+            continue;
+        }
+
+        if is_alpha_char(c) {
+            let mut j: Int = i;
+            while j < n && is_alpha_char(char_at(line, j)) {
+                j = j + 1;
+            }
+            let word: String = str_slice(line, i, j);
+            if word == "true" || word == "false" || word == "null" {
+                out = list_push(out, token_keyword(word));
+            } else {
+                out = list_push(out, token_text(word));
+            }
+            i = j;
+            continue;
+        }
+
+        if is_json_num(c) {
+            let mut j: Int = i;
+            while j < n && is_json_num(char_at(line, j)) { j = j + 1; }
+            out = list_push(out, token_number(str_slice(line, i, j)));
+            i = j;
+            continue;
+        }
+
+        if c == "{" || c == "}" || c == "[" || c == "]" || c == ":" || c == "," {
+            out = list_push(out, token_op(c));
+            i = i + 1;
+            continue;
+        }
+
+        out = list_push(out, token_text(c));
+        i = i + 1;
+    }
+
+    return out;
+}
