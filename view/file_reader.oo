@@ -41,8 +41,8 @@ pub fn is_binary_content(s: String) -> Bool {
     let check_limit: Int = if n < 1024 { n } else { 1024 };
     let mut i: Int = 0;
     while i < check_limit {
-        let c: String = char_at(s, i);
-        if c == "\0" {
+        let b: Int = byte_at(s, i);
+        if b == 0 {
             return true;
         }
         i = i + 1;

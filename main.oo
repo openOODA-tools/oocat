@@ -67,7 +67,7 @@ fn resolve_color_choice(opts_color: String, fs: &FsReadCap, env: &EnvCap) -> Boo
     let res: Result[String, String] = read_file(fs, "/proc/self/fdinfo/1");
     if res.is_ok() {
         let info: String = match res { Ok(s) => s, Err(_) => "" };
-        if str_contains(info, "flags:\t0100002") || str_contains(info, "flags:\t02") || str_contains(info, "flags: 0100002") || str_contains(info, "flags: 02") {
+        if str_contains(info, "flags:\t0100002") || str_contains(info, "flags:\t02\n") || str_contains(info, "flags: 0100002") || str_contains(info, "flags: 02\n") {
             return true;
         }
         return false;

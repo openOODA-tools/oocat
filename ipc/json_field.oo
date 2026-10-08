@@ -175,6 +175,8 @@ pub fn json_escape(s: String) -> String {
             out = out + "\\r";
         } else if b == 9 {
             out = out + "\\t";
+        } else if b == 27 {
+            out = out + "\\u001b";
         } else if b < 32 {
             out = out + " ";
         } else {
@@ -208,6 +210,15 @@ pub fn json_unescape(s: String) -> String {
             } else if next_c == "\\" {
                 out = out + "\\";
                 i = i + 2;
+            } else if next_c == "u" && i + 5 < n {
+                let hex: String = str_slice(s, i + 2, i + 6);
+                if hex == "001b" || hex == "001B" {
+                    out = out + bytes_to_str(bytes_push(bytes_new(), 27));
+                    i = i + 6;
+                } else {
+                    out = out + next_c;
+                    i = i + 2;
+                }
             } else {
                 out = out + next_c;
                 i = i + 2;
