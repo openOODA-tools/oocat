@@ -1,5 +1,5 @@
 Name:           oocat
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Sovereign syntax-highlighting file viewer and pager
 License:        ASL 2.0
@@ -24,5 +24,8 @@ install -m 0755 %{SOURCE1} %{buildroot}/usr/bin/oocat-uninstall
 /usr/bin/oocat-uninstall
 
 %changelog
+* Wed Oct 07 2026 openOODA-tools <ops@openooda.org> - 0.2.0-1
+- Elevate oocat to S+ tier v0.2.0 with streaming MCP stdio server, 4 tools, and CLI improvements
+
 * Wed Oct 07 2026 openOODA-tools <ops@openooda.org> - 0.1.0-1
 - Initial sovereign release: syntax highlighting, oote palettes, and MCP stdio surface

@@ -17,6 +17,8 @@ pub type CatOpts = struct {
     style: String,
     color: String,
     line_range: String,
+    language: String,
+    theme: String,
     mcp_mode: Bool,
     show_help: Bool,
     show_version: Bool,
@@ -32,6 +34,8 @@ pub fn default_cat_opts() -> CatOpts {
         style: "full",
         color: "auto",
         line_range: "",
+        language: "",
+        theme: "",
         mcp_mode: false,
         show_help: false,
         show_version: false,
@@ -78,6 +82,48 @@ pub fn parse_cat_opts(args: List[String]) -> CatOpts {
             opts.line_range = list_get(args, i);
         } else if str_starts_with(arg, "--line-range=") {
             opts.line_range = str_slice(arg, 13, chars_len(arg));
+        } else if str_starts_with(arg, "-r") && chars_len(arg) > 2 {
+            opts.line_range = str_slice(arg, 2, chars_len(arg));
+        } else if (arg == "-l" || arg == "--language" || arg == "--lang") && i + 1 < total {
+            i = i + 1;
+            opts.language = list_get(args, i);
+        } else if str_starts_with(arg, "--language=") {
+            opts.language = str_slice(arg, 11, chars_len(arg));
+        } else if str_starts_with(arg, "--lang=") {
+            opts.language = str_slice(arg, 7, chars_len(arg));
+        } else if str_starts_with(arg, "-l") && chars_len(arg) > 2 {
+            opts.language = str_slice(arg, 2, chars_len(arg));
+        } else if (arg == "-t" || arg == "--theme") && i + 1 < total {
+            i = i + 1;
+            opts.theme = list_get(args, i);
+        } else if str_starts_with(arg, "--theme=") {
+            opts.theme = str_slice(arg, 8, chars_len(arg));
+        } else if str_starts_with(arg, "-t") && chars_len(arg) > 2 {
+            opts.theme = str_slice(arg, 2, chars_len(arg));
+        } else if str_starts_with(arg, "-") && !str_starts_with(arg, "--") && chars_len(arg) > 1 {
+            let mut j: Int = 1;
+            let mut all_flags: Bool = true;
+            let al: Int = chars_len(arg);
+            while j < al {
+                let fc: String = char_at(arg, j);
+                if fc != "n" && fc != "b" && fc != "s" && fc != "A" {
+                    all_flags = false;
+                }
+                j = j + 1;
+            }
+            if all_flags {
+                j = 1;
+                while j < al {
+                    let fc: String = char_at(arg, j);
+                    if fc == "n" { opts.number = true; }
+                    else if fc == "b" { opts.number_nonblank = true; }
+                    else if fc == "s" { opts.squeeze_blank = true; }
+                    else if fc == "A" { opts.show_all = true; }
+                    j = j + 1;
+                }
+            } else {
+                opts.files = list_push(opts.files, arg);
+            }
         } else if !str_starts_with(arg, "-") || arg == "-" {
             opts.files = list_push(opts.files, arg);
         }

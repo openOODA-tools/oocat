@@ -1,0 +1,211 @@
+// # MCP Tool Dispatcher - Agent File Viewing and Code Syntax Engine
+//
+// Logline: Dispatches Model Context Protocol tool requests for syntax inspection and slicing.
+//
+// Setup: Bound to explicit &FsReadCap and &EnvCap tokens. Zero ambient authority.
+//
+// Beats:
+//   1. Construct JSON-RPC error and tool execution envelopes.
+//   2. Define JSON Schema catalogue for view_file, highlight_code, list_languages, and slice_lines.
+//   3. Dispatch tools/call invocations and handle argument validation.
+
+import "view/file_reader.oo";
+import "view/line_window.oo";
+import "render/render_theme.oo";
+import "render/render_highlight.oo";
+import "render/render_gutter.oo";
+import "ipc/json_field.oo";
+
+pub fn build_error(id: String, code: Int, msg: String) -> String {
+    let safe_id: String = if chars_len(id) == 0 { "null" } else { id };
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + safe_id + ",\"error\":{\"code\":" + to_string(code) + ",\"message\":\"" + json_escape(msg) + "\"}}";
+}
+
+pub fn build_tool_result(id: String, text: String) -> String {
+    let safe_id: String = if chars_len(id) == 0 { "null" } else { id };
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + safe_id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(text) + "\"}]}}";
+}
+
+pub fn tools_list_payload(id: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":["
+        + "{\"name\":\"view_file\",\"description\":\"Inspect and slice file content with optional syntax highlighting and line numbers\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Path to file\"},\"start_line\":{\"type\":\"integer\",\"description\":\"Starting line (1-indexed, default 1)\"},\"end_line\":{\"type\":\"integer\",\"description\":\"Ending line inclusive (-1 for EOF, default -1)\"},\"highlight\":{\"type\":\"boolean\",\"description\":\"Enable syntax highlighting (default false)\"},\"theme\":{\"type\":\"string\",\"description\":\"Color theme name\"},\"show_line_numbers\":{\"type\":\"boolean\",\"description\":\"Show line numbers (default true)\"}},\"required\":[\"path\"]}},"
+        + "{\"name\":\"highlight_code\",\"description\":\"Highlight code snippet with ANSI escape sequences\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"code\":{\"type\":\"string\",\"description\":\"Source code text to highlight\"},\"language\":{\"type\":\"string\",\"description\":\"Language identifier (default openooda/oo)\"},\"theme\":{\"type\":\"string\",\"description\":\"Color theme name\"}},\"required\":[\"code\"]}},"
+        + "{\"name\":\"list_languages\",\"description\":\"List supported syntax highlighting languages\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}}},"
+        + "{\"name\":\"slice_lines\",\"description\":\"Slice in-memory text content across a line range\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"content\":{\"type\":\"string\",\"description\":\"Text content to slice\"},\"start_line\":{\"type\":\"integer\",\"description\":\"Starting line (1-indexed, default 1)\"},\"end_line\":{\"type\":\"integer\",\"description\":\"Ending line inclusive (-1 for EOF, default -1)\"}},\"required\":[\"content\"]}}"
+        + "]}}";
+}
+
+pub fn handle_tool_call(fs: &FsReadCap, env: &EnvCap, id: String, req: String) -> String {
+    let params: String = json_field_raw(req, "params");
+    let tool_name: String = json_field_string(params, "name");
+    let args: String = json_field_raw(params, "arguments");
+
+    if chars_len(tool_name) == 0 {
+        return build_error(id, -32602, "missing required parameter: name");
+    }
+
+    if tool_name == "view_file" {
+        if chars_len(json_field_raw(args, "path")) == 0 {
+            return build_error(id, -32602, "missing required argument: path");
+        }
+        let path: String = json_field_string(args, "path");
+        if chars_len(path) == 0 {
+            return build_error(id, -32602, "missing required argument: path");
+        }
+        let res: Result[String, String] = read_input_source(fs, path);
+        if res.is_err() {
+            let err_msg: String = match res { Ok(_) => "", Err(e) => e };
+            return build_error(id, -32000, "failed to read file: " + err_msg);
+        }
+        let content: String = match res { Ok(s) => s, Err(_) => "" };
+        let all_lines: List[String] = split_lines(content);
+        let total: Int = list_len(all_lines);
+
+        let s_raw: String = json_field_raw(args, "start_line");
+        let start_line: Int = if chars_len(s_raw) > 0 { parse_int_safe(s_raw, 1) } else { 1 };
+        let e_raw: String = json_field_raw(args, "end_line");
+        let end_line: Int = if chars_len(e_raw) > 0 { parse_int_safe(e_raw, -1) } else { -1 };
+
+        let hl_raw: String = json_field_raw(args, "highlight");
+        let highlight: Bool = hl_raw == "true";
+        let sln_raw: String = json_field_raw(args, "show_line_numbers");
+        let show_line_numbers: Bool = if chars_len(sln_raw) > 0 { sln_raw != "false" } else { true };
+
+        let theme_arg: String = json_field_string(args, "theme");
+        let theme: String = if chars_len(theme_arg) > 0 { theme_arg } else { resolve_cat_theme(fs, env) };
+
+        let mut s_line: Int = if start_line < 1 { 1 } else { start_line };
+        let mut e_line: Int = if end_line < 0 || end_line > total { total } else { end_line };
+        let count: Int = if e_line >= s_line && s_line <= total { e_line - s_line + 1 } else { 0 };
+        let gw: Int = calc_gutter_width(e_line);
+        let lang: String = detect_language(path);
+
+        let mut rendered: String = "";
+        let mut i: Int = 0;
+        while i < total {
+            let line_num: Int = i + 1;
+            if line_num >= s_line && line_num <= e_line {
+                let raw_line: String = list_get(all_lines, i);
+                let gutter: String = if show_line_numbers { format_gutter(line_num, gw, true, highlight) } else { "" };
+                let text_part: String = if highlight { highlight_line(raw_line, lang, theme, true) } else { raw_line };
+                rendered = rendered + gutter + text_part + "\n";
+            }
+            i = i + 1;
+        }
+
+        let out: String = "{\"path\":\"" + json_escape(path) + "\",\"start_line\":" + to_string(s_line) + ",\"end_line\":" + to_string(e_line) + ",\"line_count\":" + to_string(count) + ",\"total_lines\":" + to_string(total) + ",\"content\":\"" + json_escape(rendered) + "\"}";
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "highlight_code" {
+        if chars_len(json_field_raw(args, "code")) == 0 {
+            return build_error(id, -32602, "missing required argument: code");
+        }
+        let code: String = json_field_string(args, "code");
+        let lang_opt: String = json_field_string(args, "language");
+        let lang: String = if chars_len(lang_opt) > 0 && lang_opt != "auto" { normalize_language(lang_opt) } else { "openooda" };
+        let theme_opt: String = json_field_string(args, "theme");
+        let theme: String = if chars_len(theme_opt) > 0 { theme_opt } else { resolve_cat_theme(fs, env) };
+
+        let lines: List[String] = split_lines(code);
+        let total: Int = list_len(lines);
+        let mut out_hl: String = "";
+        let mut i: Int = 0;
+        while i < total {
+            let raw_line: String = list_get(lines, i);
+            let hl: String = highlight_line(raw_line, lang, theme, true);
+            out_hl = out_hl + hl + if i + 1 < total { "\n" } else { "" };
+            i = i + 1;
+        }
+        let out: String = "{\"language\":\"" + json_escape(lang) + "\",\"theme\":\"" + json_escape(theme) + "\",\"code\":\"" + json_escape(out_hl) + "\"}";
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "list_languages" {
+        let out: String = "{\"languages\":[\"oo\",\"oot\",\"json\",\"md\",\"sh\",\"rs\",\"c\",\"txt\",\"diff\"]}";
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "slice_lines" {
+        if chars_len(json_field_raw(args, "content")) == 0 {
+            return build_error(id, -32602, "missing required argument: content");
+        }
+        let content: String = json_field_string(args, "content");
+        let all_lines: List[String] = split_lines(content);
+        let total: Int = list_len(all_lines);
+
+        let s_raw: String = json_field_raw(args, "start_line");
+        let start_line: Int = if chars_len(s_raw) > 0 { parse_int_safe(s_raw, 1) } else { 1 };
+        let e_raw: String = json_field_raw(args, "end_line");
+        let end_line: Int = if chars_len(e_raw) > 0 { parse_int_safe(e_raw, -1) } else { -1 };
+
+        let mut s_line: Int = if start_line < 1 { 1 } else { start_line };
+        let mut e_line: Int = if end_line < 0 || end_line > total { total } else { end_line };
+        let count: Int = if e_line >= s_line && s_line <= total { e_line - s_line + 1 } else { 0 };
+
+        let mut sliced: String = "";
+        let mut i: Int = 0;
+        while i < total {
+            let line_num: Int = i + 1;
+            if line_num >= s_line && line_num <= e_line {
+                sliced = sliced + list_get(all_lines, i) + "\n";
+            }
+            i = i + 1;
+        }
+        let out: String = "{\"start_line\":" + to_string(s_line) + ",\"end_line\":" + to_string(e_line) + ",\"line_count\":" + to_string(count) + ",\"total_lines\":" + to_string(total) + ",\"content\":\"" + json_escape(sliced) + "\"}";
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "oocat_view" {
+        let path: String = json_field_string(args, "path");
+        if chars_len(path) == 0 { return build_error(id, -32602, "missing required argument: path"); }
+        let res: Result[String, String] = read_input_source(fs, path);
+        if res.is_err() {
+            let err_msg: String = match res { Ok(_) => "", Err(e) => e };
+            return build_error(id, -32000, "failed to read file: " + err_msg);
+        }
+        let content: String = match res { Ok(s) => s, Err(_) => "" };
+        let all_lines: List[String] = split_lines(content);
+        let total_count: Int = list_len(all_lines);
+        let range_raw: String = json_field_string(args, "line_range");
+        let range: LineRange = parse_line_range(range_raw, total_count);
+        let lang: String = detect_language(path);
+        let gw: Int = calc_gutter_width(range.end_line);
+        let theme: String = resolve_cat_theme(fs, env);
+
+        let mut out: String = "";
+        let mut i: Int = 0;
+        while i < total_count {
+            let line_num: Int = i + 1;
+            if line_num >= range.start_line && line_num <= range.end_line {
+                let raw_line: String = list_get(all_lines, i);
+                let gutter: String = format_gutter(line_num, gw, true, false);
+                let colored: String = highlight_line(raw_line, lang, theme, false);
+                out = out + gutter + colored + "\n";
+            }
+            i = i + 1;
+        }
+        return build_tool_result(id, out);
+    }
+
+    if tool_name == "oocat_highlight" {
+        let code: String = json_field_string(args, "code");
+        if chars_len(code) == 0 { return build_error(id, -32602, "missing required argument: code"); }
+        let lang_opt: String = json_field_string(args, "language");
+        let lang: String = if chars_len(lang_opt) > 0 { lang_opt } else { "openooda" };
+        let theme: String = resolve_cat_theme(fs, env);
+        let lines: List[String] = split_lines(code);
+        let count: Int = list_len(lines);
+        let mut out: String = "";
+        let mut i: Int = 0;
+        while i < count {
+            let raw_line: String = list_get(lines, i);
+            let hl: String = highlight_line(raw_line, lang, theme, true);
+            out = out + hl + "\n";
+            i = i + 1;
+        }
+        return build_tool_result(id, out);
+    }
+
+    return build_error(id, -32601, "unknown tool: " + tool_name);
+}

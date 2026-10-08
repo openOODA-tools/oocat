@@ -24,7 +24,7 @@ curl -fsSL https://openooda-tools.github.io/oocat/install.sh | bash
 curl -fsSL https://openooda-tools.github.io/oocat/install.sh | bash -s -- --apt
 
 # Or manual package install
-sudo dpkg -i oocat_0.1.0-1_amd64.deb
+sudo dpkg -i oocat_0.2.0-1_amd64.deb
 ```
 
 ### Fedora / RHEL / CentOS (DNF)
@@ -33,7 +33,7 @@ sudo dpkg -i oocat_0.1.0-1_amd64.deb
 curl -fsSL https://openooda-tools.github.io/oocat/install.sh | bash -s -- --dnf
 
 # Or manual RPM install
-sudo dnf install ./oocat-0.1.0-1.x86_64.rpm
+sudo dnf install ./oocat-0.2.0-1.x86_64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
@@ -75,6 +75,8 @@ Options:
   -s, --squeeze-blank      suppress repeated empty output lines
   -A, --show-all           display $ at end of each line, show tabs as ^I
   -r, --line-range <R>     only output lines within range (e.g. 10:30, :20, 50:)
+  -l, --language <LANG>    override syntax language highlighter
+  -t, --theme <THEME>      override syntax color theme
       --style <STYLE>      display style: plain, numbers, grid, full [default: full]
       --color <WHEN>       colorize output: auto, always, never [default: auto]
       --no-color           disable syntax highlighting
@@ -89,13 +91,16 @@ Options:
 # Display source file with syntax highlighting, line numbers, and file header
 oocat main.oo
 
-# Display specific line range
-oocat main.oo -r 10:30
+# Display specific line range (supports attached flags like -r10:30)
+oocat main.oo -r10:30
 
 # Simple cat mode without frames or line numbers
 oocat main.oo --style plain
 
-# Standard UNIX pipe processing
+# Override language and theme via attached flags
+oocat data.txt -ljson -tclassic/1982
+
+# Standard UNIX pipe processing (defaults to raw uncolored text unless --color=always)
 git diff | oocat - --style numbers
 
 # Squeeze repeated blank lines and number non-empty lines
@@ -109,22 +114,24 @@ oocat -s -b script.sh
 `oocat` automatically discovers and synchronizes visual presentation with [oote](https://github.com/openOODA-tools/oote):
 
 - **Configuration File**: Reads `~/.openooda/theme.oot` with `$HOME` fallback.
-- **Environment Overrides**: Respects `OODA_THEME` and `NO_COLOR`.
-- **Supported Languages**: Built-in lexers for `openOODA`, `Shell`, `C/C++`, `JSON`, `Python`, and `Markdown`.
+- **Environment Overrides**: Respects `OODA_THEME`, `NO_COLOR`, `OO_NO_COLOR`.
+- **Supported Languages**: Built-in lexers for `openOODA`, `Shell`, `C/C++`, `JSON`, `Python`, `Markdown`, `Rust`, and `plain`.
 
 ---
 
 ## 4. Model Context Protocol (MCP)
 
-`oocat` includes a built-in JSON-RPC 2.0 MCP server over standard I/O for LLM coding agents:
+`oocat` includes a built-in JSON-RPC 2.0 streaming MCP stdio server for LLM coding agents:
 
 ```bash
 oocat --mcp
 ```
 
 ### Supported Tools:
-1. `oocat_view`: Safely inspects a file with syntax highlighting and bounded line ranges (`path`, `line_range`).
-2. `oocat_highlight`: Formats arbitrary code snippets with `oote` syntax tokens for terminal rendering (`code`, `language`).
+1. `view_file`: Inspects and slices file content with line count and total lines metadata (`path`, `start_line`, `end_line`, `highlight`, `theme`, `show_line_numbers`).
+2. `highlight_code`: Formats arbitrary code snippets with `oote` syntax tokens for terminal rendering (`code`, `language`, `theme`).
+3. `list_languages`: Enumerates all supported language syntax highlighters.
+4. `slice_lines`: Pure in-memory line range extraction with clamping (`content`, `start_line`, `end_line`).
 
 ---
 

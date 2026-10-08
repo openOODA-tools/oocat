@@ -18,6 +18,36 @@ import "lex/lex_json.oo";
 import "lex/lex_python.oo";
 import "lex/lex_markdown.oo";
 
+pub fn str_to_lower(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(s, i);
+        if b >= 65 && b <= 90 {
+            out = out + bytes_to_str(bytes_push(bytes_new(), b + 32));
+        } else {
+            out = out + char_at(s, i);
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn normalize_language(lang: String) -> String {
+    let tr: String = str_to_lower(str_trim(lang));
+    if tr == "oo" || tr == "oot" || tr == "openooda" { return "openooda"; }
+    if tr == "sh" || tr == "bash" || tr == "zsh" || tr == "shell" { return "shell"; }
+    if tr == "c" || tr == "h" || tr == "cpp" || tr == "hpp" { return "c"; }
+    if tr == "json" || tr == "jsonl" { return "json"; }
+    if tr == "py" || tr == "python" { return "python"; }
+    if tr == "md" || tr == "markdown" { return "markdown"; }
+    if tr == "rs" || tr == "rust" { return "openooda"; }
+    if tr == "txt" || tr == "plain" { return "plain"; }
+    if tr == "diff" || tr == "patch" { return "plain"; }
+    return tr;
+}
+
 pub fn detect_language(path: String) -> String {
     if str_ends_with(path, ".oo") || str_ends_with(path, ".oot") { return "openooda"; }
     if str_ends_with(path, ".sh") || str_ends_with(path, ".bash") || str_ends_with(path, ".zsh") { return "shell"; }
@@ -26,26 +56,31 @@ pub fn detect_language(path: String) -> String {
     if str_ends_with(path, ".json") || str_ends_with(path, ".jsonl") { return "json"; }
     if str_ends_with(path, ".py") { return "python"; }
     if str_ends_with(path, ".md") || str_ends_with(path, ".markdown") { return "markdown"; }
+    if str_ends_with(path, ".rs") { return "openooda"; }
+    if str_ends_with(path, ".diff") || str_ends_with(path, ".patch") { return "plain"; }
+    if str_ends_with(path, ".txt") { return "plain"; }
     return "plain";
 }
 
 pub fn lex_line_dispatch(line: String, lang: String) -> List[Token] {
-    if lang == "openooda" { return lex_line_openooda(line); }
-    if lang == "shell" { return lex_line_shell(line); }
-    if lang == "c" { return lex_line_c(line); }
-    if lang == "json" { return lex_line_json(line); }
-    if lang == "python" { return lex_line_python(line); }
-    if lang == "markdown" { return lex_line_markdown(line); }
+    let norm: String = normalize_language(lang);
+    if norm == "openooda" { return lex_line_openooda(line); }
+    if norm == "shell" { return lex_line_shell(line); }
+    if norm == "c" { return lex_line_c(line); }
+    if norm == "json" { return lex_line_json(line); }
+    if norm == "python" { return lex_line_python(line); }
+    if norm == "markdown" { return lex_line_markdown(line); }
     let mut plain: List[Token] = list_new();
     plain = list_push(plain, token_text(line));
     return plain;
 }
 
 pub fn highlight_line(line: String, lang: String, theme: String, use_color: Bool) -> String {
-    if !use_color || lang == "plain" {
+    let norm: String = normalize_language(lang);
+    if !use_color || norm == "plain" {
         return line;
     }
-    let tokens: List[Token] = lex_line_dispatch(line, lang);
+    let tokens: List[Token] = lex_line_dispatch(line, norm);
     let count: Int = list_len(tokens);
     let esc: String = ansi_esc();
     let mut out: String = "";

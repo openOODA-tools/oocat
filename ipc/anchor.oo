@@ -7,8 +7,9 @@
 // Beats:
 //   1. Re-export command-line option parser and types.
 //   2. Re-export JSON field extraction helpers.
-//   3. Re-export MCP stdio server driver.
+//   3. Re-export MCP stdio server driver and dispatchers.
 
 import "cat_opts.oo";
 import "json_field.oo";
+import "tool_dispatch.oo";
 import "mcp_serve.oo";

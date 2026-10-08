@@ -1,3 +1,9 @@
+oocat (0.2.0-1) stable; urgency=low
+
+  * Elevate oocat to S+ tier v0.2.0 with streaming MCP stdio server, 4 tools, and CLI improvements.
+
+ -- openOODA-tools <ops@openooda.org>  Wed, 07 Oct 2026 14:00:00 -1000
+
 oocat (0.1.0-1) stable; urgency=low
 
   * Initial sovereign release: syntax highlighting, oote palette styling, and MCP stdio surface.

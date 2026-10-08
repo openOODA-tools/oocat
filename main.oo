@@ -16,7 +16,7 @@ import "ipc/anchor.oo";
 import "std/fs/process/env.oo";
 
 fn print_help() {
-    println("oocat 0.1.0 (openOODA sovereign cat)");
+    println("oocat 0.2.0 (openOODA sovereign cat)");
     println("Usage: oocat [OPTIONS] [FILE]...");
     println("");
     println("Concatenate FILE(s) to standard output with syntax highlighting and line numbers.");
@@ -28,6 +28,8 @@ fn print_help() {
     println("  -s, --squeeze-blank      suppress repeated empty output lines");
     println("  -A, --show-all           display $ at end of each line, show tabs as ^I");
     println("  -r, --line-range <R>     only output lines within range (e.g. 10:30, :20, 50:)");
+    println("  -l, --language <LANG>    override syntax language highlighter");
+    println("  -t, --theme <THEME>      override syntax color theme");
     println("      --style <STYLE>      display style: plain, numbers, grid, full [default: full]");
     println("      --color <WHEN>       colorize output: auto, always, never [default: auto]");
     println("      --no-color           disable syntax highlighting");
@@ -37,12 +39,12 @@ fn print_help() {
 }
 
 fn print_version() {
-    println("oocat 0.1.0");
+    println("oocat 0.2.0");
     println("Copyright (C) 2026 openOODA Project.");
     println("License: Apache 2.0. Sovereign capability-bounded file viewer.");
 }
 
-fn resolve_color_choice(opts_color: String, env: &EnvCap) -> Bool {
+fn resolve_color_choice(opts_color: String, fs: &FsReadCap, env: &EnvCap) -> Bool {
     if opts_color == "never" { return false; }
     if opts_color == "always" { return true; }
     let no_col: Result[String, String] = env_get(env, "NO_COLOR");
@@ -50,10 +52,30 @@ fn resolve_color_choice(opts_color: String, env: &EnvCap) -> Bool {
         let v: String = match no_col { Ok(s) => s, Err(_) => "" };
         if chars_len(v) > 0 { return false; }
     }
+    let oo_no_col: Result[String, String] = env_get(env, "OO_NO_COLOR");
+    if oo_no_col.is_ok() {
+        let v2: String = match oo_no_col { Ok(s) => s, Err(_) => "" };
+        if chars_len(v2) > 0 { return false; }
+    }
+    let term: Result[String, String] = env_get(env, "TERM");
+    if term.is_ok() {
+        let t: String = match term { Ok(s) => s, Err(_) => "" };
+        if t == "dumb" || t == "" { return false; }
+    } else {
+        return false;
+    }
+    let res: Result[String, String] = read_file(fs, "/proc/self/fdinfo/1");
+    if res.is_ok() {
+        let info: String = match res { Ok(s) => s, Err(_) => "" };
+        if str_contains(info, "flags:\t0100002") || str_contains(info, "flags:\t02") || str_contains(info, "flags: 0100002") || str_contains(info, "flags: 02") {
+            return true;
+        }
+        return false;
+    }
     return true;
 }
 
-fn render_file(path: String, opts: CatOpts, fs: &FsReadCap, theme: String, use_color: Bool) -> Int {
+fn render_file(path: String, opts: CatOpts, fs: &FsReadCap, default_theme: String, use_color: Bool) -> Int {
     let res: Result[String, String] = read_input_source(fs, path);
     if res.is_err() {
         let err_msg: String = match res { Ok(_) => "", Err(e) => e };
@@ -73,7 +95,8 @@ fn render_file(path: String, opts: CatOpts, fs: &FsReadCap, theme: String, use_c
 
     let total: Int = list_len(raw_lines);
     let range: LineRange = parse_line_range(opts.line_range, total);
-    let lang: String = detect_language(path);
+    let lang: String = if chars_len(opts.language) > 0 { normalize_language(opts.language) } else { detect_language(path) };
+    let theme: String = if chars_len(opts.theme) > 0 { opts.theme } else { default_theme };
     let gw: Int = calc_gutter_width(range.end_line);
     let display_title: String = if path == "-" { "stdin" } else { path };
 
@@ -140,7 +163,7 @@ pub fn main(args: List[String], fs: &FsReadCap, env: &EnvCap) -> Int {
     }
 
     let theme: String = resolve_cat_theme(fs, env);
-    let use_color: Bool = resolve_color_choice(opts.color, env);
+    let use_color: Bool = resolve_color_choice(opts.color, fs, env);
 
     let file_count: Int = list_len(opts.files);
     if file_count == 0 {

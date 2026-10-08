@@ -1,4 +1,4 @@
-# oocat v0.1.0 Makefile
+# oocat v0.2.0 Makefile
 #
 # Build, verification gate, test suite, and tri-distribution packaging.
 #
@@ -11,6 +11,7 @@
 #   make density     - enforce at most 8 pages per directory
 #   make verify      - run line-cap, file-law, academy, density, and check
 #   make test        - run end-to-end integration and MCP tests
+#   make bench       - run performance benchmark suite
 #   make package     - build deb, rpm, and arch packages
 #   make clean       - remove build artifacts
 
@@ -23,9 +24,9 @@ PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
 SRC := $(wildcard *.oo) $(wildcard */*.oo)
-VERSION ?= 0.1.0
+VERSION ?= 0.2.0
 
-.PHONY: build check line-cap file-law academy density verify clean test package package-deb package-rpm package-arch install uninstall
+.PHONY: build check line-cap file-law academy density verify clean test bench package package-deb package-rpm package-arch install uninstall
 
 build: $(BIN)
 
@@ -107,27 +108,93 @@ check:
 verify: line-cap file-law academy density check
 
 test: $(BIN)
-	@echo "=== testing --help ==="
+	@echo "=== Tier 1: Core CLI Flags, Ranges, Piped Output, and Language Detection ==="
 	@./$(BIN) --help > /dev/null && echo "PASS: --help"
-	@echo "=== testing --version ==="
-	@./$(BIN) --version | grep -q "0.1.0" && echo "PASS: --version"
-	@echo "=== testing file view ==="
-	@OODA_NO_JAIL=1 ./$(BIN) VERSION --style plain | grep -q "0.1.0" && echo "PASS: file view"
-	@echo "=== testing line numbers ==="
+	@./$(BIN) -h > /dev/null && echo "PASS: -h"
+	@./$(BIN) --version | grep -q "0.2.0" && echo "PASS: --version"
+	@./$(BIN) -v | grep -q "0.2.0" && echo "PASS: -v"
+	@./$(BIN) --help | grep -q -- "-r, --line-range" && echo "PASS: --help documents -r"
+	@./$(BIN) --help | grep -q -- "-l, --language" && echo "PASS: --help documents -l"
+	@./$(BIN) --help | grep -q -- "-t, --theme" && echo "PASS: --help documents -t"
+	@./$(BIN) --help | grep -q -- "--mcp" && echo "PASS: --help documents --mcp"
+	@OODA_NO_JAIL=1 ./$(BIN) VERSION --style plain | grep -q "0.2.0" && echo "PASS: file view"
 	@OODA_NO_JAIL=1 ./$(BIN) VERSION -n --style plain | grep -q "1" && echo "PASS: line numbers"
-	@echo "=== testing line range ==="
 	@OODA_NO_JAIL=1 ./$(BIN) main.oo -r 1:5 --style plain | grep -q "oocat Entry Point" && echo "PASS: line range"
-	@echo "=== testing stdin pipeline ==="
+	@OODA_NO_JAIL=1 ./$(BIN) main.oo -r1:5 --style plain | grep -q "oocat Entry Point" && echo "PASS: attached short range -r1:5"
+	@OODA_NO_JAIL=1 ./$(BIN) VERSION -ljson --style plain | grep -q "0.2.0" && echo "PASS: attached short language -ljson"
+	@OODA_NO_JAIL=1 ./$(BIN) VERSION -t1982 --style plain | grep -q "0.2.0" && echo "PASS: attached short theme -t1982"
 	@echo "pure capability" | OODA_NO_JAIL=1 ./$(BIN) - --style plain | grep -q "pure capability" && echo "PASS: stdin pipeline"
-	@echo "=== testing MCP initialize ==="
-	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | ./$(BIN) --mcp | grep -q "protocolVersion" && echo "PASS: MCP initialize"
-	@echo "=== testing MCP tools/list ==="
-	@printf '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "oocat_view" && echo "PASS: MCP tools/list"
-	@echo "=== testing MCP tools/call oocat_view ==="
-	@printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"oocat_view","arguments":{"path":"VERSION"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "0.1.0" && echo "PASS: MCP oocat_view"
-	@echo "=== testing MCP tools/call oocat_highlight ==="
-	@printf '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"oocat_highlight","arguments":{"code":"pub fn test() {}","language":"openooda"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "pub" && echo "PASS: MCP oocat_highlight"
+	@OODA_NO_JAIL=1 ./$(BIN) VERSION -r 50:100 --style plain > /dev/null && echo "PASS: out-of-bounds line range clamping"
+	@OODA_NO_JAIL=1 ./$(BIN) VERSION -r -5:1 --style plain | grep -q "0.2.0" && echo "PASS: negative start line clamping"
+	@ESC=$$(printf '\033'); ! OODA_NO_JAIL=1 ./$(BIN) VERSION | grep -q "$$ESC" && echo "PASS: non-TTY piped output defaults to uncolored"
+	@ESC=$$(printf '\033'); OODA_NO_JAIL=1 ./$(BIN) VERSION --color=always | grep -q "$$ESC" && echo "PASS: non-TTY piped output with --color=always preserves color"
+	@echo "=== Tier 2: MCP Handshake & Protocol Framing ==="
+	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | ./$(BIN) --mcp | grep -q "2024-11-05" && echo "PASS: MCP initialize protocolVersion"
+	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | ./$(BIN) --mcp | grep -q '"name":"oocat","version":"0.2.0"' && echo "PASS: MCP initialize serverInfo"
+	@printf '{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}\n' | ./$(BIN) --mcp | grep -q '"result":{}' && echo "PASS: MCP ping"
+	@printf '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "view_file" && echo "PASS: MCP tools/list view_file"
+	@printf '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "highlight_code" && echo "PASS: MCP tools/list highlight_code"
+	@printf '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "list_languages" && echo "PASS: MCP tools/list list_languages"
+	@printf '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "slice_lines" && echo "PASS: MCP tools/list slice_lines"
+	@test -z "$$(printf '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}\n' | ./$(BIN) --mcp)" && echo "PASS: MCP notifications/initialized produces no response"
+	@printf '{"jsonrpc":"2.0","id":4,"method":"shutdown","params":{}}\n' | ./$(BIN) --mcp | grep -q '"result":null' && echo "PASS: MCP shutdown"
+	@test -z "$$(printf '{"jsonrpc":"2.0","method":"exit","params":{}}\n' | ./$(BIN) --mcp)" && echo "PASS: MCP exit terminates cleanly"
+	@test "$$(printf '{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}\n' | ./$(BIN) --mcp | grep -c '"result":{}')" = "2" && echo "PASS: MCP concatenated JSON-RPC messages without newline"
+	@printf '{"jsonrpc":"2.0","id":99,"method":"ping","params":{}}' | ./$(BIN) --mcp | grep -q '"id":99' && echo "PASS: MCP request without trailing newline"
+	@(sleep 0.1 && printf '{"jsonrpc":"2.0","id":15,"method":"ping","params":{}}\n') | ./$(BIN) --mcp | grep -q '"result":{}' && echo "PASS: MCP stdio idle pause does not crash server"
+	@echo "=== Tier 3: All 4 MCP Tools & Execution Edge Cases ==="
+	@printf '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"VERSION"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "0.2.0" && echo "PASS: MCP view_file basic"
+	@printf '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"VERSION"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "total_lines" && echo "PASS: MCP view_file total_lines metadata"
+	@printf '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"main.oo","start_line":1,"end_line":5}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "line_count" && echo "PASS: MCP view_file line_count metadata"
+	@printf '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"VERSION","highlight":true}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "0.2.0" && echo "PASS: MCP view_file with highlight"
+	@printf '{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"VERSION","show_line_numbers":false}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "0.2.0" && echo "PASS: MCP view_file without line numbers"
+	@printf '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"highlight_code","arguments":{"code":"pub fn hello() -> Int { return 1; }","language":"openooda"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "hello" && echo "PASS: MCP highlight_code explicit language"
+	@printf '{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"highlight_code","arguments":{"code":"let x: Int = 10;"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "let" && echo "PASS: MCP highlight_code default language"
+	@printf '{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"list_languages","arguments":{}}}\n' | ./$(BIN) --mcp | grep -q "json" && echo "PASS: MCP list_languages array"
+	@printf '{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"slice_lines","arguments":{"content":"alpha\\nbeta\\ngamma\\ndelta","start_line":2,"end_line":3}}}\n' | ./$(BIN) --mcp | grep -q "beta" && echo "PASS: MCP slice_lines pure in-memory slice"
+	@printf '{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"slice_lines","arguments":{"content":"one\\ntwo\\nthree","start_line":-5,"end_line":-1}}}\n' | ./$(BIN) --mcp | grep -q "line_count" && echo "PASS: MCP slice_lines negative clamping"
+	@printf '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"oocat_view","arguments":{"path":"VERSION"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "0.2.0" && echo "PASS: MCP oocat_view backward compatibility"
+	@printf '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"oocat_highlight","arguments":{"code":"pub fn test() {}","language":"openooda"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q "pub" && echo "PASS: MCP oocat_highlight backward compatibility"
+	@echo "=== Tier 4: Negative Trust & Error Responses ==="
+	@printf 'invalid json string\n' | ./$(BIN) --mcp | grep -q -- "-32600" && echo "PASS: MCP invalid json exits -32600"
+	@printf '{"jsonrpc":"1.0","id":30,"method":"ping","params":{}}\n' | ./$(BIN) --mcp | grep -q -- "-32600" && echo "PASS: MCP invalid jsonrpc version exits -32600"
+	@printf '{"jsonrpc":"2.0","id":31,"method":"","params":{}}\n' | ./$(BIN) --mcp | grep -q -- "-32600" && echo "PASS: MCP empty method exits -32600"
+	@printf '{"jsonrpc":"2.0","id":32,"method":"nonexistent_method","params":{}}\n' | ./$(BIN) --mcp | grep -q -- "-32601" && echo "PASS: MCP unknown method exits -32601"
+	@printf '{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"nonexistent_tool","arguments":{}}}\n' | ./$(BIN) --mcp | grep -q -- "-32601" && echo "PASS: MCP unknown tool exits -32601"
+	@printf '{"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"arguments":{}}}\n' | ./$(BIN) --mcp | grep -q -- "-32602" && echo "PASS: MCP missing tool name exits -32602"
+	@printf '{"jsonrpc":"2.0","id":35,"method":"tools/call","params":{"name":"view_file","arguments":{}}}\n' | ./$(BIN) --mcp | grep -q -- "-32602" && echo "PASS: MCP view_file missing path exits -32602"
+	@printf '{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"nonexistent_file_xyz.txt"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp | grep -q -- "-32000" && echo "PASS: MCP view_file nonexistent file exits -32000"
+	@printf '{"jsonrpc":"2.0","id":37,"method":"tools/call","params":{"name":"highlight_code","arguments":{}}}\n' | ./$(BIN) --mcp | grep -q -- "-32602" && echo "PASS: MCP highlight_code missing code exits -32602"
+	@printf '{"jsonrpc":"2.0","id":38,"method":"tools/call","params":{"name":"slice_lines","arguments":{}}}\n' | ./$(BIN) --mcp | grep -q -- "-32602" && echo "PASS: MCP slice_lines missing content exits -32602"
+	@echo "=== Double-Run Determinism & Response Consistency ==="
+	@run1="$$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp)"; \
+	run2="$$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp)"; \
+	test "$$run1" = "$$run2" && echo "PASS: determinism tools/list Run_1 == Run_2"
+	@run1="$$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"VERSION"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp)"; \
+	run2="$$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"VERSION"}}}\n' | OODA_NO_JAIL=1 ./$(BIN) --mcp)"; \
+	test "$$run1" = "$$run2" && echo "PASS: determinism view_file Run_1 == Run_2"
+	@run1="$$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slice_lines","arguments":{"content":"foo\\nbar","start_line":1,"end_line":2}}}\n' | ./$(BIN) --mcp)"; \
+	run2="$$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slice_lines","arguments":{"content":"foo\\nbar","start_line":1,"end_line":2}}}\n' | ./$(BIN) --mcp)"; \
+	test "$$run1" = "$$run2" && echo "PASS: determinism slice_lines Run_1 == Run_2"
+	@echo "=== Packaging & Installer Smoke Tests ==="
+	@./install.sh --dry-run > /dev/null && echo "PASS: install.sh --dry-run"
+	@./install.sh --uninstall --dry-run > /dev/null && echo "PASS: install.sh --uninstall --dry-run"
+	@./uninstall.sh --dry-run > /dev/null && echo "PASS: uninstall.sh --dry-run"
 	@echo "ALL TESTS PASSED"
+
+bench: $(BIN)
+	@echo "=== Running oocat performance benchmarks ==="
+	@echo "--- File view benchmark ---"
+	@time -p sh -c 'for i in $$(seq 1 100); do OODA_NO_JAIL=1 ./$(BIN) main.oo --style plain > /dev/null; done'
+	@echo "--- MCP view_file benchmark ---"
+	@time -p sh -c 'for i in $$(seq 1 100); do printf '\''{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"view_file","arguments":{"path":"main.oo","start_line":1,"end_line":50}}}\n'\'' | ./$(BIN) --mcp > /dev/null; done'
+	@echo "--- MCP highlight_code benchmark ---"
+	@time -p sh -c 'for i in $$(seq 1 100); do printf '\''{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"highlight_code","arguments":{"code":"pub fn test() -> Int { return 42; }","language":"openooda"}}}\n'\'' | ./$(BIN) --mcp > /dev/null; done'
+	@echo "--- MCP slice_lines benchmark ---"
+	@time -p sh -c 'for i in $$(seq 1 100); do printf '\''{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"slice_lines","arguments":{"content":"line1\\nline2\\nline3\\nline4\\nline5","start_line":2,"end_line":4}}}\n'\'' | ./$(BIN) --mcp > /dev/null; done'
+	@echo "--- MCP tools/list benchmark ---"
+	@time -p sh -c 'for i in $$(seq 1 100); do printf '\''{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}\n'\'' | ./$(BIN) --mcp > /dev/null; done'
+	@echo "Benchmark complete."
 
 install: $(BIN)
 	@mkdir -p $(DESTDIR)$(BINDIR)
@@ -157,7 +224,8 @@ package-rpm: $(BIN)
 	@cp uninstall.sh ~/rpmbuild/SOURCES/uninstall.sh
 	@sed "s/^Version:.*/Version: $(VERSION)/" packaging/oocat.spec > ~/rpmbuild/SPECS/oocat.spec
 	@rpmbuild -bb ~/rpmbuild/SPECS/oocat.spec
-	@cp ~/rpmbuild/RPMS/x86_64/oocat-$(VERSION)*.rpm dist/
+	@cp ~/rpmbuild/RPMS/x86_64/oocat-$(VERSION)*.rpm dist/ 2>/dev/null || true
+	@if ls dist/oocat-$(VERSION)-1.*.x86_64.rpm 1> /dev/null 2>&1; then cp dist/oocat-$(VERSION)-1.*.x86_64.rpm dist/oocat-$(VERSION)-1.x86_64.rpm; fi
 	@echo "built dist RPM package"
 
 package-arch: $(BIN)
@@ -170,11 +238,17 @@ package-arch: $(BIN)
 	@tar --zstd -cf dist/oocat-$(VERSION)-1-x86_64.pkg.tar.zst -C dist/arch-pkg .PKGINFO usr
 	@rm -rf dist/arch-pkg
 	@bash -n packaging/arch/PKGBUILD
+	@cp packaging/arch/PKGBUILD dist/PKGBUILD
 	@cp packaging/arch/PKGBUILD packaging/PKGBUILD
 	@echo "built dist/oocat-$(VERSION)-1-x86_64.pkg.tar.zst and validated PKGBUILD"
 
 package: package-deb package-rpm package-arch
+	@cp $(BIN) dist/oocat-linux-x86_64
+	@chmod 0755 dist/oocat-linux-x86_64
+	@(cd dist && sha256sum oocat-linux-x86_64 > oocat-linux-x86_64.sha256)
+	@(cd dist && sha256sum oocat* > checksums.txt)
+	@echo "built all packages and generated dist/checksums.txt"
 
 clean:
-	@rm -rf dist .ooda-cache
+	@rm -rf dist .ooda-cache .blackbox
 	@echo "cleaned"
