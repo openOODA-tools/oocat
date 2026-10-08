@@ -1,0 +1,9 @@
+name=oocat
+version=0.2.0
+deps=
+caps=FsRead,Mcp
+license=Apache-2.0
+payload=main.oo
+commit=
+sha256=
+sig=
